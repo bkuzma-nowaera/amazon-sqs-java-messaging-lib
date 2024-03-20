@@ -76,7 +76,7 @@ import com.amazonaws.services.sqs.AmazonSQS;
  */
 public class SQSConnection implements Connection, QueueConnection {
     private static final Log LOG = LogFactory.getLog(SQSConnection.class);
-    
+
     /** For now this doesn't do anything. */
     private ExceptionListener exceptionListener;
     /** For now this doesn't do anything. */
@@ -85,7 +85,7 @@ public class SQSConnection implements Connection, QueueConnection {
 
     /** Used for interactions with connection state. */
     private final Object stateLock = new Object();
-    
+
     private final AmazonSQSMessagingClientWrapper amazonSQSClient;
 
     /**
@@ -99,7 +99,7 @@ public class SQSConnection implements Connection, QueueConnection {
 
     /** Used to determine if the connection is stopped or not. */
     private volatile boolean running = false;
-    
+
     /**
      * Used to determine if any other action was taken on the
      * connection, that might prevent setting the clientId
@@ -113,11 +113,11 @@ public class SQSConnection implements Connection, QueueConnection {
         this.numberOfMessagesToPrefetch = numberOfMessagesToPrefetch;
 
     }
-    
+
     /**
      * Get the AmazonSQSClient used by this connection. This can be used to do administrative operations
      * that aren't included in the JMS specification, e.g. creating new queues.
-     * 
+     *
      * @return the AmazonSQSClient used by this connection
      */
     public AmazonSQS getAmazonSQSClient() {
@@ -125,24 +125,24 @@ public class SQSConnection implements Connection, QueueConnection {
     }
 
     /**
-     * Get a wrapped version of the AmazonSQSClient used by this connection. The wrapper transforms 
+     * Get a wrapped version of the AmazonSQSClient used by this connection. The wrapper transforms
      * all exceptions from the client into JMSExceptions so that it can more easily be used
-     * by existing code that already expects JMSExceptions. This client can be used to do 
+     * by existing code that already expects JMSExceptions. This client can be used to do
      * administrative operations that aren't included in the JMS specification, e.g. creating new queues.
-     * 
+     *
      * @return  wrapped version of the AmazonSQSClient used by this connection
      */
     public AmazonSQSMessagingClientWrapper getWrappedAmazonSQSClient() {
-        return amazonSQSClient;        
+        return amazonSQSClient;
     }
-    
+
     int getNumberOfMessagesToPrefetch() {
         return numberOfMessagesToPrefetch;
     }
-    
+
     /**
      * Creates a <code>QueueSession</code>
-     * 
+     *
      * @param transacted
      *            Only false is supported.
      * @param acknowledgeMode
@@ -160,10 +160,10 @@ public class SQSConnection implements Connection, QueueConnection {
     public QueueSession createQueueSession(boolean transacted, int acknowledgeMode) throws JMSException {
         return (QueueSession) createSession(transacted, acknowledgeMode);
     }
-    
+
     /**
      * Creates a <code>Session</code>
-     * 
+     *
      * @param transacted
      *            Only false is supported.
      * @param acknowledgeMode
@@ -188,14 +188,18 @@ public class SQSConnection implements Connection, QueueConnection {
         if (acknowledgeMode == Session.AUTO_ACKNOWLEDGE) {
             sqsSession = new SQSSession(this, AcknowledgeMode.ACK_AUTO.withOriginalAcknowledgeMode(acknowledgeMode));
         } else if (acknowledgeMode == Session.CLIENT_ACKNOWLEDGE || acknowledgeMode == Session.DUPS_OK_ACKNOWLEDGE) {
-            sqsSession = new SQSSession(this, AcknowledgeMode.ACK_RANGE.withOriginalAcknowledgeMode(acknowledgeMode));
+            // NOTE: SL specific change: change ack mode (apparently related to how ESB JMS
+            // transport handles acking messages)
+            //sqsSession = new SQSSession(this, AcknowledgeMode.ACK_RANGE.withOriginalAcknowledgeMode(acknowledgeMode));
+            sqsSession = new SQSSession(this,
+                AcknowledgeMode.ACK_UNORDERED.withOriginalAcknowledgeMode(SQSSession.UNORDERED_ACKNOWLEDGE));
         } else if (acknowledgeMode == SQSSession.UNORDERED_ACKNOWLEDGE) {
             sqsSession = new SQSSession(this, AcknowledgeMode.ACK_UNORDERED.withOriginalAcknowledgeMode(acknowledgeMode));
         } else {
             LOG.error("Unrecognized acknowledgeMode. Cannot create Session.");
             throw new JMSException("Unrecognized acknowledgeMode. Cannot create Session.");
         }
-        synchronized (stateLock) { 
+        synchronized (stateLock) {
             if (closing) {
                 /**
                  * SQSSession's constructor has already started a SQSSessionCallbackScheduler which should be closed
@@ -214,7 +218,7 @@ public class SQSConnection implements Connection, QueueConnection {
                 sqsSession.start();
             }
         }
-               
+
         return sqsSession;
     }
 
@@ -230,10 +234,10 @@ public class SQSConnection implements Connection, QueueConnection {
         actionOnConnectionTaken = true;
         this.exceptionListener = listener;
     }
-    
+
     /**
      * Checks if the connection close is in-progress or already completed.
-     * 
+     *
      * @throws IllegalStateException
      *             If the connection close is in-progress or already completed.
      */
@@ -245,7 +249,7 @@ public class SQSConnection implements Connection, QueueConnection {
 
     /**
      * Checks if the connection close is already completed.
-     * 
+     *
      * @throws IllegalStateException
      *             If the connection close is already completed.
      */
@@ -254,14 +258,14 @@ public class SQSConnection implements Connection, QueueConnection {
             throw new IllegalStateException("Connection is closed");
         }
     }
-    
+
     /**
      * Starts a connection's delivery of incoming messages. A call to
      * <code>start</code> on a connection that has already been started is
      * ignored.
      * <P>
      * This will not return until all the sessions start internally.
-     * 
+     *
      * @throws JMSException
      *             On internal error
      */
@@ -287,7 +291,7 @@ public class SQSConnection implements Connection, QueueConnection {
             }
         }
     }
-    
+
     /**
      * Stops a connection's delivery of incoming messages. A call to
      * <code>stop</code> on a connection that has already been stopped is
@@ -308,7 +312,7 @@ public class SQSConnection implements Connection, QueueConnection {
      * <P>
      * A message listener must not attempt to stop its own connection; otherwise
      * throws a IllegalStateException.
-     * 
+     *
      * @throws IllegalStateException
      *             If called by a message listener on its own
      *             <code>Connection</code>.
@@ -318,12 +322,12 @@ public class SQSConnection implements Connection, QueueConnection {
     @Override
     public void stop() throws JMSException {
         checkClosed();
-                
+
         if (!running) {
             return;
         }
         actionOnConnectionTaken = true;
-        
+
         if (SQSSession.SESSION_THREAD_FACTORY.wasThreadCreatedWithThisThreadGroup(Thread.currentThread())) {
             throw new IllegalStateException(
                     "MessageListener must not attempt to stop its own Connection to prevent potential deadlock issues");
@@ -348,7 +352,7 @@ public class SQSConnection implements Connection, QueueConnection {
             }
         }
     }
-    
+
     /**
      * Closes the connection.
      * <P>
@@ -365,7 +369,7 @@ public class SQSConnection implements Connection, QueueConnection {
      * <P>
      * A message listener must not attempt to close its own connection;
      * otherwise throws a IllegalStateException.
-     * 
+     *
      * @throws IllegalStateException
      *             If called by a message listener on its own
      *             <code>Connection</code>.
@@ -423,9 +427,9 @@ public class SQSConnection implements Connection, QueueConnection {
             }
         }
 
-    } 
+    }
 
-    
+
     /**
      * This is used in Session. When Session is closed it will remove itself
      * from list of Sessions.
@@ -438,10 +442,10 @@ public class SQSConnection implements Connection, QueueConnection {
          */
         sessions.remove(session);
     }
-    
+
     /**
      * Gets the client identifier for this connection.
-     * 
+     *
      * @return client identifier
      * @throws JMSException
      *             If the connection is being closed
@@ -451,13 +455,13 @@ public class SQSConnection implements Connection, QueueConnection {
         checkClosing();
         return clientID;
     }
-    
+
     /**
      * Sets the client identifier for this connection.
      * <P>
      * Does not verify uniqueness of client ID, so does not detect if another
      * connection is already using the same client ID
-     * 
+     *
      * @param clientID
      *            The client identifier
      * @throws JMSException
@@ -483,10 +487,10 @@ public class SQSConnection implements Connection, QueueConnection {
         }
         this.clientID = clientID;
     }
-    
+
     /**
      * Get the metadata for this connection
-     * 
+     *
      * @return the connection metadata
      * @throws JMSException
      *             If the connection is being closed

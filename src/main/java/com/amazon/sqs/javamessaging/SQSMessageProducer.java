@@ -57,7 +57,7 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
     private static final Log LOG = LogFactory.getLog(SQSMessageProducer.class);
 
     private long MAXIMUM_DELIVERY_DELAY_MILLISECONDS = TimeUnit.MILLISECONDS.convert(15, TimeUnit.MINUTES);
-    
+
     private int deliveryDelaySeconds = 0;
 
     /** This field is not actually used. */
@@ -94,9 +94,9 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
         String messageType = null;
         if (!(rawMessage instanceof SQSMessage)) {
             throw new MessageFormatException(
-                    "Unrecognized message type. Messages have to be one of: SQSBytesMessage, SQSObjectMessage, or SQSTextMessage");            
+                    "Unrecognized message type. Messages have to be one of: SQSBytesMessage, SQSObjectMessage, or SQSTextMessage");
         }
-        
+
         SQSMessage message = (SQSMessage)rawMessage;
         message.setJMSDestination(queue);
         if (message instanceof SQSBytesMessage) {
@@ -105,11 +105,11 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
         } else if (message instanceof SQSObjectMessage) {
             sqsMessageBody = ((SQSObjectMessage) message).getMessageBody();
             messageType = SQSMessage.OBJECT_MESSAGE_TYPE;
-        } else if (message instanceof SQSTextMessage) {            
+        } else if (message instanceof SQSTextMessage) {
             sqsMessageBody = ((SQSTextMessage) message).getText();
             messageType = SQSMessage.TEXT_MESSAGE_TYPE;
         }
-        
+
         if (sqsMessageBody == null || sqsMessageBody.isEmpty()) {
             throw new JMSException("Message body cannot be null or empty");
         }
@@ -158,10 +158,10 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
     public Queue getQueue() throws JMSException {
         return sqsDestination;
     }
-    
+
     /**
      * Sends a message to a queue.
-     * 
+     *
      * @param queue
      *            the queue destination to send this message to
      * @param message
@@ -213,6 +213,12 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
                 continue;
             }
 
+            // NOTE: SL specific change: only map SQS_ and JMS_ prefixed properties
+            // in order not to exceed message attribute count limit
+            if (!propertyName.startsWith("JMS_") && !propertyName.startsWith("SQS_")) {
+                continue;
+            }
+
             // the JMSXGroupID and JMSXGroupSeq are always stored as message
             // properties, so they are not lost between send and receive
             // even though SQS Classic does not respect those values when returning messages
@@ -250,7 +256,7 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
         Destination replyTo = message.getJMSReplyTo();
         if (replyTo instanceof SQSQueueDestination) {
             SQSQueueDestination replyToQueue = (SQSQueueDestination)replyTo;
-    
+
             /**
              * This will override the existing attributes if exists. Everything that
              * has prefix JMS_ is reserved for JMS Provider, but if the user sets that
@@ -284,20 +290,20 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
         messageAttributeValue.setStringValue(value);
         messageAttributes.put(key, messageAttributeValue);
     }
-    
+
     /**
      * Sends a message to a queue.
      * <P>
      * Send does not support deliveryMode, priority, and timeToLive. It will
      * ignore anything in deliveryMode, priority, and timeToLive.
-     * 
+     *
      * @param queue
      *            the queue destination to send this message to
      * @param message
      *            the message to send
      * @param deliveryMode
      * @param priority
-     * @param timeToLive           
+     * @param timeToLive
      * @throws InvalidDestinationException
      *             If a client uses this method with a destination other than
      *             SQS queue destination.
@@ -314,17 +320,17 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
             throws JMSException {
         send(queue, message);
     }
-    
+
     /**
      * Gets the destination associated with this MessageProducer.
-     * 
+     *
      * @return this producer's queue destination
      */
     @Override
     public Destination getDestination() throws JMSException {
         return sqsDestination;
     }
-    
+
     /**
      * Closes the message producer.
      */
@@ -335,11 +341,11 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
             parentSQSSession.removeProducer(this);
         }
     }
-    
+
     /**
      * Sends a message to a destination created during the creation time of this
      * message producer.
-     * 
+     *
      * @param message
      *            the message to send
      * @throws MessageFormatException
@@ -358,19 +364,19 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
         }
         sendInternal(sqsDestination, message);
     }
-  
+
     /**
      * Sends a message to a destination created during the creation time of this
      * message producer.
      * <P>
      * Send does not support deliveryMode, priority, and timeToLive. It will
      * ignore anything in deliveryMode, priority, and timeToLive.
-     * 
+     *
      * @param message
      *            the message to send
      * @param deliveryMode
      * @param priority
-     * @param timeToLive           
+     * @param timeToLive
      * @throws MessageFormatException
      *             If an invalid message is specified.
      * @throws UnsupportedOperationException
@@ -383,10 +389,10 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
     public void send(Message message, int deliveryMode, int priority, long timeToLive) throws JMSException {
         send(message);
     }
-    
+
     /**
      * Sends a message to a queue destination.
-     * 
+     *
      * @param destination
      *            the queue destination to send this message to
      * @param message
@@ -419,7 +425,7 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
      * <P>
      * Send does not support deliveryMode, priority, and timeToLive. It will
      * ignore anything in deliveryMode, priority, and timeToLive.
-     * 
+     *
      * @param destination
      *            the queue destination to send this message to
      * @param message
@@ -502,9 +508,9 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
     public long getTimeToLive() throws JMSException {
         return timeToLive;
     }
-    
+
     /**
-     * Sets the minimum length of time in milliseconds that must elapse after a 
+     * Sets the minimum length of time in milliseconds that must elapse after a
      * message is sent before the JMS provider may deliver the message to a consumer.
      * <p>
      * This must be a multiple of 1000, since SQS only supports delivery delays
@@ -521,13 +527,13 @@ public class SQSMessageProducer implements MessageProducer, QueueSender {
     }
 
     /**
-     * Gets the minimum length of time in milliseconds that must elapse after a 
+     * Gets the minimum length of time in milliseconds that must elapse after a
      * message is sent before the JMS provider may deliver the message to a consumer.
      */
     public long getDeliveryDelay() {
         return deliveryDelaySeconds * 1000;
     }
-    
+
     void checkClosed() throws IllegalStateException {
         if (closed.get()) {
             throw new IllegalStateException("The producer is closed.");
